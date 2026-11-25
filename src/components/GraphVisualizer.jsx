@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Play, Pause, RotateCcw, Share2, Route, Compass } from 'lucide-react';
+import { Play, Pause, RotateCcw, Share2, Route, Compass, Plus, RefreshCw } from 'lucide-react';
 
-const GRAPH_NODES = [
-  { id: 'A', label: 'A', x: 110, y: 150 },
-  { id: 'B', label: 'B', x: 240, y: 70 },
-  { id: 'C', label: 'C', x: 240, y: 230 },
-  { id: 'D', label: 'D', x: 390, y: 80 },
-  { id: 'E', label: 'E', x: 390, y: 220 },
-  { id: 'F', label: 'F', x: 530, y: 150 }
+const INITIAL_NODES = [
+  { id: 'A', label: 'A', x: 100, y: 150 },
+  { id: 'B', label: 'B', x: 230, y: 65 },
+  { id: 'C', label: 'C', x: 230, y: 235 },
+  { id: 'D', label: 'D', x: 390, y: 75 },
+  { id: 'E', label: 'E', x: 390, y: 225 },
+  { id: 'F', label: 'F', x: 540, y: 150 }
 ];
 
-const GRAPH_EDGES = [
+const INITIAL_EDGES = [
   { from: 'A', to: 'B', weight: 4 },
   { from: 'A', to: 'C', weight: 2 },
   { from: 'B', to: 'C', weight: 1 },
@@ -23,22 +23,26 @@ const GRAPH_EDGES = [
   { from: 'E', to: 'F', weight: 1 }
 ];
 
-function buildAdjacency() {
-  const adj = Object.fromEntries(GRAPH_NODES.map((n) => [n.id, []]));
-  GRAPH_EDGES.forEach((e) => {
-    adj[e.from].push({ to: e.to, weight: e.weight });
-    adj[e.to].push({ to: e.from, weight: e.weight });
+function buildAdjacency(nodes, edges) {
+  const adj = Object.fromEntries(nodes.map((n) => [n.id, []]));
+  edges.forEach((e) => {
+    if (adj[e.from] && adj[e.to]) {
+      adj[e.from].push({ to: e.to, weight: e.weight });
+      adj[e.to].push({ to: e.from, weight: e.weight });
+    }
   });
   return adj;
 }
 
-function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
-  const adj = buildAdjacency();
+function generateGraphSteps(algo, nodes, edges, startId, targetId) {
+  const adj = buildAdjacency(nodes, edges);
   const steps = [];
 
   if (algo === 'bfs') {
     const visited = new Set([startId]);
+    const parent = { [startId]: null };
     const queue = [startId];
+
     steps.push({
       current: startId,
       visited: Array.from(visited),
@@ -56,32 +60,55 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
         frontier: [...queue],
         path: [],
         distances: {},
-        explanation: `'${curr}' tuguni navbatdan olindi va qo'shni tugunlar tekshirilmoqda.`
+        explanation: `'${curr}' tuguni navbatdan olindi va qo'shnilari tekshirilmoqda.`
       });
 
-      for (const edge of adj[curr]) {
+      if (curr === targetId) break;
+
+      for (const edge of adj[curr] || []) {
         if (!visited.has(edge.to)) {
           visited.add(edge.to);
+          parent[edge.to] = curr;
           queue.push(edge.to);
           steps.push({
             current: edge.to,
             visited: Array.from(visited),
             frontier: [...queue],
-            path: edge.to === targetId ? [startId, curr, edge.to] : [],
+            path: [],
             distances: {},
-            explanation: `Yangi tugun '${edge.to}' topildi va navbat oxiriga qo'shildi.`
+            explanation: `Yangi tugun '${edge.to}' topildi va navbatga qo'shildi.`
           });
-          if (edge.to === targetId) {
-            return steps;
-          }
         }
       }
     }
+
+    const foundPath = [];
+    if (visited.has(targetId)) {
+      let trace = targetId;
+      while (trace) {
+        foundPath.unshift(trace);
+        trace = parent[trace];
+      }
+    }
+
+    steps.push({
+      current: targetId,
+      visited: Array.from(visited),
+      frontier: [],
+      path: foundPath,
+      distances: {},
+      explanation:
+        foundPath.length > 0
+          ? `BFS yakunlandi! Topilgan yo'l: ${foundPath.join(' → ')} (${foundPath.length - 1} qadam).`
+          : `'${startId}' dan '${targetId}' ga yo'l topilmadi.`
+    });
+
     return steps;
   }
 
   if (algo === 'dfs') {
     const visited = new Set();
+    const parent = { [startId]: null };
     const stack = [startId];
 
     steps.push({
@@ -102,28 +129,51 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
         current: curr,
         visited: Array.from(visited),
         frontier: [...stack],
-        path: curr === targetId ? Array.from(visited) : [],
+        path: [],
         distances: {},
         explanation: `Chuqurlik bo'yicha '${curr}' tuguniga kirildi.`
       });
 
       if (curr === targetId) break;
 
-      const neighbors = [...adj[curr]].reverse();
+      const neighbors = [...(adj[curr] || [])].reverse();
       for (const edge of neighbors) {
         if (!visited.has(edge.to)) {
+          if (parent[edge.to] === undefined) parent[edge.to] = curr;
           stack.push(edge.to);
         }
       }
     }
+
+    const foundPath = [];
+    if (visited.has(targetId)) {
+      let trace = targetId;
+      while (trace) {
+        foundPath.unshift(trace);
+        trace = parent[trace];
+      }
+    }
+
+    steps.push({
+      current: targetId,
+      visited: Array.from(visited),
+      frontier: [],
+      path: foundPath,
+      distances: {},
+      explanation:
+        foundPath.length > 0
+          ? `DFS yakunlandi! Yo'nalish: ${foundPath.join(' → ')}.`
+          : `'${startId}' dan '${targetId}' ga yo'l topilmadi.`
+    });
+
     return steps;
   }
 
-  // Dijkstra eng qisqa yo'l
-  const dist = Object.fromEntries(GRAPH_NODES.map((n) => [n.id, Infinity]));
-  const prev = Object.fromEntries(GRAPH_NODES.map((n) => [n.id, null]));
+  // Dijkstra
+  const dist = Object.fromEntries(nodes.map((n) => [n.id, Infinity]));
+  const prev = Object.fromEntries(nodes.map((n) => [n.id, null]));
   dist[startId] = 0;
-  const unvisited = new Set(GRAPH_NODES.map((n) => n.id));
+  const unvisited = new Set(nodes.map((n) => n.id));
 
   steps.push({
     current: startId,
@@ -149,7 +199,7 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
 
     steps.push({
       current: curr,
-      visited: GRAPH_NODES.map((n) => n.id).filter((id) => !unvisited.has(id)),
+      visited: nodes.map((n) => n.id).filter((id) => !unvisited.has(id)),
       frontier: Array.from(unvisited),
       path: [],
       distances: { ...dist },
@@ -158,7 +208,7 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
 
     if (curr === targetId) break;
 
-    for (const edge of adj[curr]) {
+    for (const edge of adj[curr] || []) {
       if (!unvisited.has(edge.to)) continue;
       const alt = dist[curr] + edge.weight;
       if (alt < dist[edge.to]) {
@@ -166,7 +216,7 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
         prev[edge.to] = curr;
         steps.push({
           current: edge.to,
-          visited: GRAPH_NODES.map((n) => n.id).filter((id) => !unvisited.has(id)),
+          visited: nodes.map((n) => n.id).filter((id) => !unvisited.has(id)),
           frontier: Array.from(unvisited),
           path: [],
           distances: { ...dist },
@@ -177,19 +227,24 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
   }
 
   const shortestPath = [];
-  let trace = targetId;
-  while (trace) {
-    shortestPath.unshift(trace);
-    trace = prev[trace];
+  if (dist[targetId] !== Infinity) {
+    let trace = targetId;
+    while (trace) {
+      shortestPath.unshift(trace);
+      trace = prev[trace];
+    }
   }
 
   steps.push({
     current: targetId,
-    visited: GRAPH_NODES.map((n) => n.id).filter((id) => !unvisited.has(id)),
+    visited: nodes.map((n) => n.id).filter((id) => !unvisited.has(id)),
     frontier: [],
-    path: shortestPath[0] === startId ? shortestPath : [],
+    path: shortestPath,
     distances: { ...dist },
-    explanation: `'${startId}' dan '${targetId}' gacha eng qisqa masofa: ${dist[targetId]} (${shortestPath.join(' → ')}).`
+    explanation:
+      dist[targetId] !== Infinity
+        ? `'${startId}' dan '${targetId}' gacha eng qisqa masofa: ${dist[targetId]} (${shortestPath.join(' → ')}).`
+        : `'${startId}' dan '${targetId}' ga bog'langan yo'l topilmadi.`
   });
 
   return steps;
@@ -197,16 +252,28 @@ function generateGraphSteps(algo, startId = 'A', targetId = 'F') {
 
 export default function GraphVisualizer({ theme = 'dark' }) {
   const isLight = theme === 'light';
+  const [nodes] = useState(INITIAL_NODES);
+  const [edges, setEdges] = useState(INITIAL_EDGES);
   const [algo, setAlgo] = useState('dijkstra');
+  const [startNode, setStartNode] = useState('A');
+  const [targetNode, setTargetNode] = useState('F');
+
+  const [edgeFrom, setEdgeFrom] = useState('A');
+  const [edgeTo, setEdgeTo] = useState('D');
+  const [edgeWeight, setEdgeWeight] = useState(3);
+
   const [stepIdx, setStepIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
-  const steps = useMemo(() => generateGraphSteps(algo, 'A', 'F'), [algo]);
+  const steps = useMemo(
+    () => generateGraphSteps(algo, nodes, edges, startNode, targetNode),
+    [algo, nodes, edges, startNode, targetNode]
+  );
 
   useEffect(() => {
     setStepIdx(0);
     setIsPlaying(false);
-  }, [algo]);
+  }, [algo, startNode, targetNode, edges]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -220,8 +287,33 @@ export default function GraphVisualizer({ theme = 'dark' }) {
     return () => clearInterval(t);
   }, [isPlaying, steps.length]);
 
+  const handleAddOrUpdateEdge = (e) => {
+    e.preventDefault();
+    if (edgeFrom === edgeTo) return;
+    const cleanWeight = Math.max(1, Math.min(99, Number(edgeWeight) || 1));
+
+    setEdges((prev) => {
+      const filtered = prev.filter(
+        (ed) =>
+          !(
+            (ed.from === edgeFrom && ed.to === edgeTo) ||
+            (ed.from === edgeTo && ed.to === edgeFrom)
+          )
+      );
+      return [...filtered, { from: edgeFrom, to: edgeTo, weight: cleanWeight }];
+    });
+  };
+
+  const handleResetGraph = () => {
+    setEdges(INITIAL_EDGES);
+    setStartNode('A');
+    setTargetNode('F');
+    setStepIdx(0);
+    setIsPlaying(false);
+  };
+
   const active = steps[stepIdx] || steps[0];
-  const nodePos = Object.fromEntries(GRAPH_NODES.map((n) => [n.id, n]));
+  const nodePos = Object.fromEntries(nodes.map((n) => [n.id, n]));
 
   const isEdgeInPath = (from, to) => {
     if (!active.path || active.path.length < 2) return false;
@@ -235,19 +327,22 @@ export default function GraphVisualizer({ theme = 'dark' }) {
 
   return (
     <div
-      className={`rounded-3xl border p-4 sm:p-6 space-y-4 transition-colors duration-300 ${
+      className={`rounded-3xl border p-4 sm:p-6 space-y-5 transition-colors duration-300 ${
         isLight
           ? 'bg-white/90 border-slate-200 text-slate-900 shadow-sm'
           : 'bg-[#080d1a]/85 border-white/10 text-slate-100 backdrop-blur-xl'
       }`}
     >
+      {/* Yuqori sarlavha va algoritm tanlash */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-cyan-500/15 border border-cyan-500/30 flex items-center justify-center text-cyan-500">
             {algo === 'dijkstra' ? <Route className="w-4 h-4" /> : <Compass className="w-4 h-4" />}
           </div>
           <div>
-            <h3 className="text-sm sm:text-base font-bold">Graf &amp; Qidiruv Vizualizatori (A → F)</h3>
+            <h3 className="text-sm sm:text-base font-bold">
+              Graf &amp; Qidiruv Vizualizatori ({startNode} → {targetNode})
+            </h3>
             <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
               Qadam {stepIdx + 1} / {steps.length}
             </p>
@@ -278,6 +373,94 @@ export default function GraphVisualizer({ theme = 'dark' }) {
         </div>
       </div>
 
+      {/* Start/Target va Yangi yo'l (Edge) qo'shish paneli */}
+      <div
+        className={`p-3.5 rounded-2xl border grid grid-cols-1 lg:grid-cols-2 gap-3 ${
+          isLight ? 'bg-slate-50/90 border-slate-200' : 'bg-white/[0.02] border-white/10'
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-cyan-500">Yo&apos;nalish:</span>
+          <select
+            value={startNode}
+            onChange={(e) => setStartNode(e.target.value)}
+            className={`px-2.5 py-1.5 rounded-xl border font-bold ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#050811] border-white/15 text-white'
+            }`}
+          >
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>Start: {n.id}</option>
+            ))}
+          </select>
+          <span>→</span>
+          <select
+            value={targetNode}
+            onChange={(e) => setTargetNode(e.target.value)}
+            className={`px-2.5 py-1.5 rounded-xl border font-bold ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#050811] border-white/15 text-white'
+            }`}
+          >
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>Manzil: {n.id}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={handleResetGraph}
+            className={`ml-auto px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
+              isLight ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100' : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+            }`}
+            title="Grafni tiklash"
+          >
+            <RefreshCw className="w-3 h-3" /> Tiklash
+          </button>
+        </div>
+
+        <form onSubmit={handleAddOrUpdateEdge} className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-indigo-500">Yo&apos;l qo&apos;shish:</span>
+          <select
+            value={edgeFrom}
+            onChange={(e) => setEdgeFrom(e.target.value)}
+            className={`px-2 py-1.5 rounded-xl border font-mono ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#050811] border-white/15 text-white'
+            }`}
+          >
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.id}</option>
+            ))}
+          </select>
+          <span>—</span>
+          <select
+            value={edgeTo}
+            onChange={(e) => setEdgeTo(e.target.value)}
+            className={`px-2 py-1.5 rounded-xl border font-mono ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#050811] border-white/15 text-white'
+            }`}
+          >
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.id}</option>
+            ))}
+          </select>
+          <input
+            type="number"
+            min="1"
+            max="99"
+            value={edgeWeight}
+            onChange={(e) => setEdgeWeight(e.target.value)}
+            className={`w-14 px-2 py-1.5 rounded-xl border font-mono text-center ${
+              isLight ? 'bg-white border-slate-300 text-slate-900' : 'bg-[#050811] border-white/15 text-white'
+            }`}
+            title="Vazn (masofa)"
+          />
+          <button
+            type="submit"
+            className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/35 text-cyan-700 dark:text-cyan-300 font-semibold flex items-center gap-1 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" /> Qo&apos;shish
+          </button>
+        </form>
+      </div>
+
       {/* Graf SVG maydoni */}
       <div
         className={`w-full rounded-2xl border overflow-hidden p-2 ${
@@ -285,9 +468,10 @@ export default function GraphVisualizer({ theme = 'dark' }) {
         }`}
       >
         <svg viewBox="0 0 640 300" className="w-full h-52 sm:h-64">
-          {GRAPH_EDGES.map((edge) => {
+          {edges.map((edge) => {
             const a = nodePos[edge.from];
             const b = nodePos[edge.to];
+            if (!a || !b) return null;
             const inPath = isEdgeInPath(edge.from, edge.to);
             const midX = (a.x + b.x) / 2;
             const midY = (a.y + b.y) / 2;
@@ -330,7 +514,7 @@ export default function GraphVisualizer({ theme = 'dark' }) {
             );
           })}
 
-          {GRAPH_NODES.map((node) => {
+          {nodes.map((node) => {
             const isCurrent = active.current === node.id;
             const isVisited = active.visited?.includes(node.id);
             const isInPath = active.path?.includes(node.id);
